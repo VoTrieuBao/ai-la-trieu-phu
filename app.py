@@ -7,25 +7,18 @@ import streamlit.components.v1 as components
 st.set_page_config(page_title="Ai Là Triệu Phú", layout="wide")
 
 # ==========================================
-# CẤU HÌNH ÂM THANH (AUDIO SFX & MUSIC)
+# CẤU HÌNH ÂM THANH
 # ==========================================
-# Bạn có thể thay các link dưới đây bằng link MP3 trực tiếp hoặc file MP3 trong repository
 SOUNDS = {
-    # Âm thanh khi trả lời đúng thông thường
     "correct": "https://assets.mixkit.co/active_storage/sfx/2000/2000-preview.mp3",
-    # Âm thanh khi trả lời sai (Game Over)
     "wrong": "https://assets.mixkit.co/active_storage/sfx/2874/2874-preview.mp3",
-    # Âm thanh vượt qua mốc quan trọng (Mốc 5, 10)
     "milestone": "https://assets.mixkit.co/active_storage/sfx/1435/1435-preview.mp3",
-    # Âm thanh chiến thắng tuyệt đối (Câu 15)
     "victory": "https://assets.mixkit.co/active_storage/sfx/2019/2019-preview.mp3"
 }
 
-# Nhạc nền kịch tính lặp vô tận (Bấm nút ở thanh bên để bật/tắt)
 BG_MUSIC_URL = "https://cdn.pixabay.com/download/audio/2022/03/15/audio_c8c8a73467.mp3?filename=suspense-ambient-110058.mp3"
 
 def play_sound(url):
-    """Tự động phát hiệu ứng âm thanh 1 lần bằng thẻ HTML5 Audio"""
     if url:
         sound_html = f"""
         <audio autoplay style="display:none;">
@@ -35,7 +28,7 @@ def play_sound(url):
         components.html(sound_html, height=0, width=0)
 
 # ==========================================
-# CSS TÙY CHỈNH GIAO DIỆN
+# CSS GIAO DIỆN
 # ==========================================
 st.markdown("""
 <style>
@@ -100,7 +93,6 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# 15 mốc thưởng
 MONEY_LADDER = [
     (15, "250.000.000"), (14, "150.000.000"), (13, "80.000.000"),
     (12, "40.000.000"),  (11, "30.000.000"),  (10, "22.000.000"),
@@ -136,22 +128,34 @@ def load_questions_from_excel(filepath):
         })
     return questions
 
-# Quản lý State
+# Khởi tạo an toàn từng biến trong session_state
 if "questions" not in st.session_state:
     st.session_state.questions = load_questions_from_excel(EXCEL_FILE)
 
 if "current_index" not in st.session_state:
     st.session_state.current_index = 0
+
+if "game_over" not in st.session_state:
     st.session_state.game_over = False
+
+if "won" not in st.session_state:
     st.session_state.won = False
+
+if "sound_to_play" not in st.session_state:
     st.session_state.sound_to_play = None
+
+if "lifelines" not in st.session_state:
     st.session_state.lifelines = {
         "5050": True,
         "audience": True,
         "call": True,
         "change": True
     }
+
+if "hidden_options" not in st.session_state:
     st.session_state.hidden_options = []
+
+if "lifeline_message" not in st.session_state:
     st.session_state.lifeline_message = None
 
 def reset_game():
@@ -176,7 +180,7 @@ def get_guaranteed_prize(idx):
         return "2.000.000 VNĐ"
     return "0 VNĐ"
 
-# --- SIDEBAR: CÀI ĐẶT ÂM THANH & BỘ CÂU HỎI ---
+# --- SIDEBAR ---
 with st.sidebar:
     st.header("🎵 Điều khiển Âm thanh")
     play_bg = st.checkbox("Bật nhạc nền hồi hộp", value=True)
@@ -192,10 +196,11 @@ with st.sidebar:
     if st.button("🔄 Chơi lại từ đầu"):
         reset_game()
 
-# Kích hoạt âm thanh khi có sự kiện
-if st.session_state.sound_to_play:
-    play_sound(st.session_state.sound_to_play)
-    st.session_state.sound_to_play = None
+# Kích hoạt âm thanh an toàn
+sound_target = st.session_state.get("sound_to_play")
+if sound_target:
+    play_sound(sound_target)
+    st.session_state["sound_to_play"] = None
 
 # --- BỐ CỤC CHÍNH ---
 col_game, col_ladder = st.columns([2.6, 1.2])
@@ -240,16 +245,16 @@ with col_ladder:
 
     h_col3, h_col4 = st.columns(2)
     
-    # 3. Gọi điện thoại
+    # 3. Gọi điện
     with h_col3:
         if st.button("Gọi điện", disabled=not st.session_state.lifelines["call"] or st.session_state.game_over):
             st.session_state.lifelines["call"] = False
             is_helpful = random.random() < 0.85
             suggested = curr_q["answer"] if is_helpful else random.choice([o for o in curr_q["options"] if o.strip() != curr_q["answer"].strip()])
-            st.session_state.lifeline_message = f"📞 **Người thân tư vấn:** *'Theo mình thì đáp án chắc chắn là **{suggested}**!'*"
+            st.session_state.lifeline_message = f"📞 **Người thân tư vấn:** *'Theo mình nghĩ thì đáp án chắc chắn là **{suggested}**!'*"
             st.rerun()
 
-    # 4. Đổi câu hỏi
+    # 4. Đổi câu
     with h_col4:
         if st.button("Đổi câu", disabled=not st.session_state.lifelines["change"] or st.session_state.game_over):
             st.session_state.lifelines["change"] = False
@@ -310,27 +315,22 @@ with col_game:
                     st.button(f"{prefix[idx]}: ---", key=f"empty_{idx}", disabled=True)
                 else:
                     if st.button(f"{prefix[idx]}: {opt}", key=f"btn_{idx}_{st.session_state.current_index}"):
-                        # KIỂM TRA ĐÁP ÁN VÀ GÁN ÂM THANH TƯƠNG ỨNG
                         if opt.strip() == q_data["answer"].strip():
                             st.session_state.hidden_options = []
                             st.session_state.lifeline_message = None
                             
-                            # Kiểm tra mốc chiến thắng câu 15
                             if current_question_num >= len(st.session_state.questions) or current_question_num == 15:
                                 st.session_state.won = True
                                 st.session_state.game_over = True
                                 st.session_state.sound_to_play = SOUNDS["victory"]
-                            # Kiểm tra các mốc quan trọng (Câu 5, Câu 10)
                             elif current_question_num in [5, 10]:
                                 st.session_state.current_index += 1
                                 st.session_state.sound_to_play = SOUNDS["milestone"]
-                            # Câu đúng bình thường
                             else:
                                 st.session_state.current_index += 1
                                 st.session_state.sound_to_play = SOUNDS["correct"]
                             st.rerun()
                         else:
-                            # Trả lời sai -> Game Over
                             st.session_state.game_over = True
                             st.session_state.sound_to_play = SOUNDS["wrong"]
                             st.rerun()
