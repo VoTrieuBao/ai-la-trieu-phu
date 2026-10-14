@@ -1,10 +1,11 @@
 import streamlit as st
 import pandas as pd
 import random
+import os
 
 st.set_page_config(page_title="Ai Là Triệu Phú", layout="wide")
 
-# CSS tùy chỉnh giao diện màu sắc đặc trưng
+# CSS tùy chỉnh giao diện
 st.markdown("""
 <style>
     .stApp {
@@ -15,8 +16,8 @@ st.markdown("""
         background: linear-gradient(180deg, #102a5c, #071530);
         border: 2px solid #e0a92a;
         border-radius: 12px;
-        padding: 20px;
-        font-size: 20px;
+        padding: 22px;
+        font-size: 22px;
         font-weight: bold;
         text-align: center;
         margin-bottom: 25px;
@@ -60,14 +61,15 @@ st.markdown("""
     .help-box {
         background-color: #162447;
         border-left: 4px solid #f39c12;
-        padding: 12px;
+        padding: 14px;
         margin-bottom: 15px;
-        border-radius: 4px;
+        border-radius: 6px;
+        font-size: 16px;
     }
 </style>
 """, unsafe_allow_html=True)
 
-# 15 mốc thưởng
+# 15 mốc tiền thưởng
 MONEY_LADDER = [
     (15, "250.000.000"), (14, "150.000.000"), (13, "80.000.000"),
     (12, "40.000.000"),  (11, "30.000.000"),  (10, "22.000.000"),
@@ -76,32 +78,41 @@ MONEY_LADDER = [
     (3, "600.000"),      (2, "400.000"),      (1, "200.000")
 ]
 
-# Bộ câu hỏi mẫu mặc định
-DEFAULT_QUESTIONS = [
-    {
-        "level": 1,
-        "question": "Thủ đô của Việt Nam là thành phố nào?",
-        "options": ["Hà Nội", "Đà Nẵng", "TP. Hồ Chí Minh", "Cần Thơ"],
-        "answer": "Hà Nội"
-    },
-    {
-        "level": 2,
-        "question": "Nhân vật chị Dậu trong tác phẩm 'Tắt đèn' của Ngô Tất Tố có tên thật là gì?",
-        "options": ["Lê Thị Đào", "Lê Thị Mai", "Lê Thị Xuân", "Lê Thị Lan"],
-        "answer": "Lê Thị Đào"
-    },
-    {
-        "level": 3,
-        "question": "Môn thể thao nào được mệnh danh là 'Môn thể thao vua'?",
-        "options": ["Bóng đá", "Bóng rổ", "Quần vợt", "Cầu lông"],
-        "answer": "Bóng đá"
-    }
-]
+# Tên file Excel bạn đã tải lên GitHub (nếu bạn đổi tên file khác, hãy sửa tên ở đây)
+EXCEL_FILE = "bo_cau_hoi_mau_ai_la_trieu_phu.xlsx"
 
-# Khởi tạo Session State
+@st.cache_data
+def load_questions_from_excel(filepath):
+    if not os.path.exists(filepath):
+        # Trả về câu hỏi phụ nếu chưa tìm thấy file
+        return [
+            {
+                "level": 1,
+                "question": "Thủ đô của Việt Nam là gì?",
+                "options": ["Hà Nội", "Đà Nẵng", "TP. Hồ Chí Minh", "Cần Thơ"],
+                "answer": "Hà Nội"
+            }
+        ]
+    df = pd.read_excel(filepath)
+    # Sắp xếp theo cấp độ tăng dần
+    if "level" in df.columns:
+        df = df.sort_values(by="level")
+    
+    questions = []
+    for _, row in df.iterrows():
+        questions.append({
+            "level": int(row.get("level", 1)),
+            "question": str(row["question"]),
+            "options": [str(row["opt_a"]), str(row["opt_b"]), str(row["opt_c"]), str(row["opt_d"])],
+            "answer": str(row["answer"]).strip()
+        })
+    return questions
+
+# Nạp dữ liệu tự động
 if "questions" not in st.session_state:
-    st.session_state.questions = DEFAULT_QUESTIONS
+    st.session_state.questions = load_questions_from_excel(EXCEL_FILE)
 
+# Quản lý trạng thái trò chơi
 if "current_index" not in st.session_state:
     st.session_state.current_index = 0
     st.session_state.game_over = False
@@ -136,46 +147,13 @@ def get_guaranteed_prize(idx):
         return "2.000.000 VNĐ"
     return "0 VNĐ"
 
-# --- SIDEBAR: KHU VỰC QUẢN LÝ VÀ NẠP CÂU HỎI QUA EXCEL ---
-with st.sidebar:
-    st.header("⚙️ Nạp câu hỏi (Excel)")
-    st.caption(f"Hiện có: **{len(st.session_state.questions)} câu hỏi**")
-    
-    uploaded_file = st.file_uploader("Tải lên file Excel (.xlsx / .csv)", type=["xlsx", "csv"])
-    if uploaded_file is not None:
-        try:
-            if uploaded_file.name.endswith(".xlsx"):
-                df = pd.read_excel(uploaded_file)
-            else:
-                df = pd.read_csv(uploaded_file)
-                
-            new_qs = []
-            for _, row in df.iterrows():
-                new_qs.append({
-                    "level": int(row.get("level", 1)),
-                    "question": str(row["question"]),
-                    "options": [str(row["opt_a"]), str(row["opt_b"]), str(row["opt_c"]), str(row["opt_d"])],
-                    "answer": str(row["answer"]).strip()
-                })
-            if new_qs:
-                st.session_state.questions = new_qs
-                st.success("✅ Đã nạp thành công bộ câu hỏi mới!")
-                if st.button("Áp dụng và bắt đầu lại"):
-                    reset_game()
-        except Exception as e:
-            st.error(f"Lỗi khi đọc file Excel: {e}")
-
-    st.write("")
-    if st.button("🔄 Làm mới ván chơi"):
-        reset_game()
-
-# --- GIAO DIỆN CHÍNH ---
+# --- BỐ CỤC CHÍNH ---
 col_game, col_ladder = st.columns([2.6, 1.2])
 
 curr_q = st.session_state.questions[min(st.session_state.current_index, len(st.session_state.questions) - 1)]
 
 with col_ladder:
-    st.subheader("Quyền trợ giúp")
+    st.subheader("Trợ giúp")
     h_col1, h_col2 = st.columns(2)
     
     # 1. Trợ giúp 50:50
@@ -190,7 +168,7 @@ with col_ladder:
     with h_col2:
         if st.button("Khán giả", disabled=not st.session_state.lifelines["audience"] or st.session_state.game_over):
             st.session_state.lifelines["audience"] = False
-            correct_pct = random.randint(60, 85)
+            correct_pct = random.randint(65, 88)
             remaining = 100 - correct_pct
             p1 = random.randint(0, remaining)
             p2 = random.randint(0, remaining - p1)
@@ -226,7 +204,7 @@ with col_ladder:
         if st.button("Đổi câu", disabled=not st.session_state.lifelines["change"] or st.session_state.game_over):
             st.session_state.lifelines["change"] = False
             st.session_state.hidden_options = []
-            st.session_state.lifeline_message = "🔄 Bạn đã đổi sang câu hỏi khác!"
+            st.session_state.lifeline_message = "🔄 Bạn đã đổi sang một câu hỏi khác!"
             if st.session_state.current_index + 1 < len(st.session_state.questions):
                 st.session_state.questions.append(st.session_state.questions.pop(st.session_state.current_index))
             st.rerun()
@@ -259,10 +237,10 @@ with col_game:
     if st.session_state.game_over:
         if st.session_state.won:
             st.balloons()
-            st.success("🎉 XUẤT SẮC! BẠN ĐÃ TRẢ LỜI ĐÚNG TẤT CẢ CÂU HỎI VÀ ĐẠT 250.000.000 VNĐ!")
+            st.success("🎉 XUẤT SẮC! BẠN ĐÃ TRẢ LỜI ĐÚNG TẤT CẢ 15 CÂU HỎI VÀ ĐẠT 250.000.000 VNĐ!")
         else:
             st.error("❌ Rất tiếc, câu trả lời chưa chính xác!")
-            st.info(f"💰 Tiền thưởng an toàn mang về: **{get_guaranteed_prize(st.session_state.current_index)}**")
+            st.info(f"💰 Phần thưởng an toàn mang về: **{get_guaranteed_prize(st.session_state.current_index)}**")
         
         if st.button("Chơi lại"):
             reset_game()
